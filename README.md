@@ -1,6 +1,6 @@
 # spark-asammdf
 
-[![CI](https://github.com/datenwissenschaften/spark-asammdf/actions/workflows/ci.yml/badge.svg)](https://github.com/datenwissenschaften/spark-asammdf/actions/workflows/ci.yml) ![Apache Spark 4.0](https://img.shields.io/badge/Apache%20Spark-4.0-E25A1C.svg) ![Scala 2.13](https://img.shields.io/badge/Scala-2.13-DC322F.svg) [![Last commit](https://img.shields.io/github/last-commit/datenwissenschaften/spark-asammdf)](https://github.com/datenwissenschaften/spark-asammdf/commits/main) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![CI](https://github.com/datenwissenschaften/spark-asammdf/actions/workflows/ci.yml/badge.svg)](https://github.com/datenwissenschaften/spark-asammdf/actions/workflows/ci.yml) ![Apache Spark 4.0](https://img.shields.io/badge/Apache%20Spark-4.0-E25A1C.svg) ![Scala 2.13](https://img.shields.io/badge/Scala-2.13-DC322F.svg) [![Last commit](https://img.shields.io/github/last-commit/datenwissenschaften/spark-asammdf)](https://github.com/datenwissenschaften/spark-asammdf/commits/main) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) ![scalafmt](https://img.shields.io/badge/style-scalafmt-DC322F.svg)
 
 A read-only Apache Spark DataSource V2 connector that reads [ASAM MDF4](https://www.asam.net/standards/detail/mdf/)
 automotive measurement files into Spark DataFrames, registered as
