@@ -13,6 +13,7 @@ from mdf_spark.helper import get_partitions, read_data, _record_chunks
 # src/test/resources/generate_fixture.py — no real-world signal names.
 CHANNEL_A = "engine_speed"
 CHANNEL_B = "vehicle_speed"
+CHANNEL_STRING = "traffic_light_state"
 
 
 class TestHelper(unittest.TestCase):
@@ -152,6 +153,43 @@ class TestHelper(unittest.TestCase):
             for p in (full_path, chunk_path):
                 if os.path.exists(p):
                     os.remove(p)
+
+    def test_read_data_timestamps_are_plausible_regardless_of_sample_rate(self):
+        # Regression test: pandas picks the datetime64 storage resolution (us vs ns) based on
+        # what the input timestamps need to be represented exactly — a whole-second-sampled
+        # channel like battery_voltage (1 Hz) resolves to `us`, while the finer, sub-second
+        # channels resolve to `ns`. read_data used to assume `ns` unconditionally, which
+        # silently corrupted `time` for any channel landing on `us` resolution (values came
+        # back around 1970 instead of the real measurement date). Every channel's epoch
+        # microseconds must land in the same year regardless of its own sample rate.
+        import pandas as pd
+        years = {}
+        for channel in ("battery_voltage", "engine_speed", "vehicle_speed"):
+            path = read_data(self.test_file, channel, "")
+            try:
+                df = pd.read_parquet(path)
+                years[channel] = pd.to_datetime(df['time'].iloc[0], unit='us').year
+            finally:
+                if os.path.exists(path):
+                    os.remove(path)
+        self.assertEqual(len(set(years.values())), 1, f"channels disagree on year: {years}")
+        self.assertGreater(next(iter(years.values())), 2000)
+
+    def test_read_data_for_string_channel(self):
+        # traffic_light_state is the fixture's discrete/string channel: its samples must land
+        # in valueText (as "red"/"green" strings), with valueNumeric left NaN — the pandas-level
+        # counterpart to the Scala-level regression test in test_mdf_datasource.py, which caught
+        # MDFPartitionReader defaulting a missing numeric value to 0.0 instead of null.
+        path = read_data(self.test_file, CHANNEL_STRING, "")
+        try:
+            import pandas as pd
+            df = pd.read_parquet(path)
+            self.assertGreater(len(df), 0)
+            self.assertEqual(set(df['valueText'].unique()), {"red", "green"})
+            self.assertTrue(df['valueNumeric'].isna().all())
+        finally:
+            if os.path.exists(path):
+                os.remove(path)
 
     def test_read_data_with_value_filter(self):
         # vehicle_speed is 0 km/h during the fixture's idle phases and rises

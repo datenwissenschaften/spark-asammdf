@@ -102,7 +102,9 @@ Only what is actually exercised by this connector and its test suite:
   numeric samples arrive as physical (converted) values, not raw. This connector does not
   implement conversion logic itself.
 - **Numeric and string sample types**: numeric samples populate `valueNumeric` (double); any other
-  dtype is converted to its string representation and populated into `valueText`.
+  dtype is converted to its string representation and populated into `valueText`, with
+  `valueNumeric` left genuinely `NULL` for those rows (and vice versa) — exercised end-to-end by
+  the fixture's `traffic_light_state`/`gear_position` string channels, not just numeric ones.
 - **Cycle counts**: read directly from `channel_group.cycles_nr` metadata, so counting rows never
   requires decoding sample arrays.
 
@@ -199,37 +201,47 @@ This is the same call sequence exercised by `src/test/python/test_mdf_datasource
 
 The public repository contains no real vehicle, ECU, or customer data. The only data file
 committed to the repository, `src/test/resources/data/sample.mf4`, is generated deterministically
-by `src/test/resources/generate_fixture.py`: five generic, seeded synthetic channels
-(`engine_speed`, `vehicle_speed`, `accelerator_position`, `brake_pressure`, `battery_voltage`)
-following a short synthetic drive cycle (accelerate → cruise → brake → idle). Regenerate it at any
-time with `python src/test/resources/generate_fixture.py` or `make fixture`.
+by `src/test/resources/generate_fixture.py`: eight generic, seeded synthetic channels
+(`engine_speed`, `vehicle_speed`, `accelerator_position`, `brake_pressure`, `battery_voltage`,
+`traffic_light_state`, `brake_indicator`, `gear_position`) encoding a short synthetic scenario —
+stopped at a red light, a driver reaction delay after it turns green, then accelerate → cruise →
+brake → idle. `traffic_light_state` and `gear_position` are string-valued (populating
+`valueText`); the rest are numeric (`valueNumeric`). Regenerate it at any time with
+`python src/test/resources/generate_fixture.py` or `make fixture`.
 
 **[`notebooks/spark_asammdf_workflow.ipynb`](notebooks/spark_asammdf_workflow.ipynb)** is the
 end-to-end, human-facing demonstration: it loads that fixture through the real connector (not a
-reimplementation), explores the schema, and runs two distributed Spark aggregations before
-visualizing the small, aggregated results with Plotly. Regenerate the notebook and its chart
-assets with `make example` (see [Development](#development)).
+reimplementation), explores the schema, and runs several distributed Spark aggregations before
+visualizing the small, aggregated results with Plotly — including reconstructing, purely from
+Spark queries against the connector's output, the causal timeline between the traffic light
+turning green and the car actually starting to move. Regenerate the notebook and its chart assets
+with `make example` (see [Development](#development)).
 
-![Synthetic signals over time: engine_speed vs. vehicle_speed](docs/assets/spark-asammdf/synthetic-signals.png)
+![Hesitation at a traffic light: reaction delay before the car starts moving](docs/assets/spark-asammdf/hesitation-timeline.png)
 
 ## Testing
 
-18 tests, all deterministic, none requiring network access, credentials, or proprietary data:
+23 tests, all deterministic, none requiring network access, credentials, or proprietary data:
 
 - **4 Scala unit tests** (`WhereClauseExtractorTest`, ScalaTest): filter-to-where-clause
   translation for empty, single, `In`, and combined filters.
-- **11 Python unit tests** (`test_helper.py`): partition enumeration, where-clause-scoped
+- **13 Python unit tests** (`test_helper.py`): partition enumeration, where-clause-scoped
   enumeration, `lru_cache` memoization of `get_partitions` (asserted via a mock call count, since
   Spark re-invokes planning on every action and can invoke it more than once under AQE), full
-  channel reads, reads via an explicit `(group, index)` occurrence hint, value-filtered reads, and
+  channel reads, reads via an explicit `(group, index)` occurrence hint, value-filtered reads,
   `maxRecordsPerPartition` record-range chunking (`_record_chunks`'s split points, `get_partitions`
   producing multiple chunk partitions for a large occurrence, and a chunked read matching the
-  corresponding slice of an unchunked read byte-for-byte).
-- **3 Python integration tests** (`test_mdf_datasource.py`): a real local `SparkSession` (bound to
+  corresponding slice of an unchunked read byte-for-byte), a string-valued channel read (`valueText`
+  populated, `valueNumeric` left `NaN`), and a regression test asserting every channel's absolute
+  timestamps land in a plausible year regardless of its own sample rate.
+- **6 Python integration tests** (`test_mdf_datasource.py`): a real local `SparkSession` (bound to
   `127.0.0.1` for sandboxed/CI environments) loading the built jar and reading the synthetic
-  fixture end-to-end through `com.datenwissenschaften.MDFDataSource`, including an `IN` filter, a
-  numeric value filter, and `maxRecordsPerPartition` actually producing 3 Spark partitions (vs. 1
-  without it) for the same channel with identical resulting rows.
+  fixture end-to-end through `com.datenwissenschaften.MDFDataSource` — an `IN` filter, a numeric
+  value filter, `maxRecordsPerPartition` actually producing 3 Spark partitions (vs. 1 without it)
+  with identical resulting rows, a string-channel read, the "exactly one of valueNumeric/valueText
+  is non-null" schema invariant holding across every row in the file, and the hesitation scenario's
+  full causal timeline (light green → brake released → gear engaged → pedal pressed → car moving)
+  reconstructed purely from Spark queries and asserted to hold in that order.
 
 Run everything with `make test`, or individually with `sbt test` and
 `python -m pytest src/test/python -v`.

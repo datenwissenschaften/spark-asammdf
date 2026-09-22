@@ -124,7 +124,10 @@ class MDFPartitionReader(partition: MDFPartition, readSchema: StructType) extend
               if (group.getType.containsField("valueNumeric") && group.getFieldRepetitionCount("valueNumeric") > 0) {
                 group.getDouble("valueNumeric", 0)
               } else {
-                0.0
+                // Genuinely null (a discrete/string-valued channel's row), not 0.0 — matching
+                // valueText's null handling below, so exactly one of the two columns is
+                // non-null per row, as documented on MDFDataSource.
+                null
               }
             case "valueText" =>
               if (group.getType.containsField("valueText") && group.getFieldRepetitionCount("valueText") > 0) {

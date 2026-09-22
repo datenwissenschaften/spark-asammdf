@@ -128,13 +128,25 @@ def read_data(file_path, channel_name, where_clause="", group_index=None, channe
         # Determine if samples are numeric or discrete
         is_numeric = np.issubdtype(ch.samples.dtype, np.number)
 
-        # Convert relative timestamps to absolute datetime64[ns]
+        # Convert relative timestamps to absolute datetime.
         # start_time is already a datetime object
         abs_timestamps = pd.to_datetime(start_time) + pd.to_timedelta(ch.timestamps, unit='s')
 
+        # pandas chooses the datetime64 storage resolution (us vs ns) based on what the input
+        # values actually need to be represented exactly — e.g. whole-second timestamps (as a
+        # 1 Hz channel like battery_voltage has) resolve to `us`, while sub-second timestamps
+        # resolve to `ns`. A fixed `.view(np.int64) // 1000` silently assumed `ns` and produced
+        # garbage (epoch-1970-ish) timestamps for any channel that resolved to `us` instead, so
+        # the resolution is forced explicitly here before reading the raw epoch integer.
+        # start_time is normally tz-aware (asammdf stores the header's UTC offset), but this
+        # also tolerates a tz-naive start_time.
+        if abs_timestamps.tz is not None:
+            abs_timestamps = abs_timestamps.tz_convert('UTC').tz_localize(None)
+        epoch_micros = abs_timestamps.astype('datetime64[us]').view(np.int64)
+
         # Create DataFrame with both columns
         data = {
-            'time': (abs_timestamps.view(np.int64) // 1000), # Convert to microseconds for Spark
+            'time': epoch_micros,  # microseconds since epoch, for Spark's TimestampType
             'channel': channel_name,
             'valueNumeric': None,
             'valueText': None
