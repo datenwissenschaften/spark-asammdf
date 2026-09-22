@@ -67,8 +67,10 @@ jobs:
       - name: Generate synthetic test fixture
         run: python src/test/resources/generate_fixture.py
 
-      - name: Run Python test suite
-        run: python -m pytest src/test/python -v
+      - name: Run Python test suite with coverage
+        run: |
+          pip install pytest-cov
+          python -m pytest src/test/python -v --cov=src/main/python/mdf_spark --cov-report=term-missing --cov-report=xml
 
   notebook:
     name: End-to-end notebook
