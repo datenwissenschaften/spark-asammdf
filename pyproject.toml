@@ -1,0 +1,8 @@
+[build-system]
+# setup.py's Extension modules are Cython-compiled at build time (build_ext
+# calls cythonize() on plain .py sources); without Cython declared here, pip's
+# isolated build environment doesn't have it installed, cythonize() silently
+# falls back to a no-op, and build_ext then fails trying to compile the raw
+# .py files as C sources ("unknown file type '.py'").
+requires = ["setuptools>=68", "wheel", "Cython>=3.0"]
+build-backend = "setuptools.build_meta"

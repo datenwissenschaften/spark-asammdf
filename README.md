@@ -197,6 +197,65 @@ df.where("channel = 'vehicle_speed'").where("valueNumeric > 50").show(10, False)
 
 This is the same call sequence exercised by `src/test/python/test_mdf_datasource.py`.
 
+## Running on Databricks
+
+> **Not exercised by this repository's CI or test suite.** The steps below follow from the
+> connector's architecture (see [Overview](#overview)) and Databricks' own documented deployment
+> mechanisms, but — unlike everything in [Compatibility](#compatibility) — have not been verified
+> against a real Databricks workspace. Treat this as deployment guidance, not a tested claim.
+
+Databricks clusters are a real (non-local) Spark cluster, in the same sense the
+[Overview](#overview) section means it: executors run as separate processes from the driver. That
+is exactly the case this connector's driver/executor split (Py4J bridge for planning,
+per-partition Python subprocess for reading) was built and manually verified for, so the
+architecture should carry over directly. What's specific to Databricks is *how the jar and the
+`mdf_spark` Python package get onto every node* — a notebook's `spark` session doesn't let you set
+`spark.jars` or `spark.executorEnv.PYTHONPATH` after the fact the way the [Quick start](#quick-start)
+snippet does, so both have to be installed as **cluster-scoped libraries** before the cluster (or a
+restart of it) picks them up:
+
+1. Build both artifacts locally, the same way the [Quick start](#quick-start) and
+   [Development](#development) sections do:
+   ```bash
+   sbt package     # target/scala-2.13/spark-asammdf-scala_2.13-0.1.jar
+   sbt buildPython # dist/mdf_spark-1.0.0-*.whl (Cython-compiled, deps from setup.py's install_requires)
+   ```
+2. Upload the jar and the wheel to a Unity Catalog Volume (or DBFS) — e.g.
+   `/Volumes/<catalog>/<schema>/<volume>/spark-asammdf/`.
+3. In the cluster's **Libraries** tab, install both as cluster-scoped libraries from that Volume
+   path (one JAR library, one Python wheel library), then restart the cluster. This is what makes
+   `mdf_spark`/`asammdf` importable by *every* executor's Python interpreter — not just the
+   driver's — which is what a notebook-scoped `%pip install` does not reliably guarantee.
+   Installing `asammdf`, `pyarrow`, `pandas`, and `numpy` individually as PyPI cluster libraries
+   works too if you'd rather skip building the wheel.
+4. Upload the `.mf4` file(s) to the same Volume. Read them via the Volume's local FUSE mount path
+   (`/Volumes/<catalog>/<schema>/<volume>/spark-asammdf/sample.mf4`, or `/dbfs/...` for DBFS), not
+   the `dbfs:/...` URI form — `asammdf` and the Python subprocess read the file as an ordinary
+   local file, not through Spark's distributed filesystem abstraction.
+5. In a notebook cell on that cluster:
+   ```python
+   from mdf_spark import init_bridge
+   init_bridge(spark)  # `spark` is already provided by the Databricks notebook runtime
+
+   df = (
+       spark.read
+       .format("com.datenwissenschaften.MDFDataSource")
+       .option("path", "/Volumes/<catalog>/<schema>/<volume>/spark-asammdf/sample.mf4")
+       .load()
+   )
+   df.where("channel = 'vehicle_speed'").show()
+   ```
+   No `spark.jars` or `spark.executorEnv.PYTHONPATH` config is needed here — both are already on
+   every node via the cluster libraries installed in step 3.
+
+Two things worth flagging explicitly rather than discovering at runtime:
+- This needs a classic all-purpose or job cluster where executors are permitted to spawn
+  subprocesses (`MDFPartitionReader` shells out to `python -m mdf_spark.helper` per partition).
+  Whether Databricks Serverless compute permits this has not been checked.
+- The executor-side Python interpreter that matters is whatever Databricks' own `PYSPARK_PYTHON`
+  already points to on that cluster; cluster-scoped library installs target that interpreter,
+  which is why they're the reliable option here over a notebook-scoped `%pip install`.
+
 ## Synthetic example
 
 The public repository contains no real vehicle, ECU, or customer data. The only data file
@@ -299,8 +358,12 @@ pip install -r notebooks/requirements.txt   # only needed to regenerate the exam
 - `sbt test` — Scala unit tests.
 - `python -m pytest src/test/python -v` — Python unit + integration tests (needs the jar built
   and the fixture generated first; see [Quick start](#quick-start)).
-- `sbt buildAll` — cleans, builds the Scala jar, and builds the Cython-compiled Python wheel
-  (`setup.py`) used for distribution.
+- `sbt buildAll` (or just the `buildPython` part of it) — cleans, builds the Scala jar, and builds
+  the Cython-compiled Python wheel (`setup.py`) used for distribution (e.g. for
+  [Running on Databricks](#running-on-databricks)). This invokes `.venv/bin/python3 setup.py`
+  directly rather than through `pip`, so — unlike `pip install -e .` — it needs `setuptools`,
+  `wheel`, and `Cython` installed into `.venv` itself: `pip install setuptools wheel Cython`
+  (a plain `python -m venv` on Python 3.12+ does not bundle `setuptools`/`wheel` by default).
 - `make example` — regenerates the synthetic fixture, rebuilds the jar, and re-executes the
   example notebook in place (which also regenerates the PNGs under
   `docs/assets/spark-asammdf/`). This is the single command referenced throughout this README for
