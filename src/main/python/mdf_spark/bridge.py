@@ -1,3 +1,5 @@
+from pyspark.java_gateway import ensure_callback_server_started
+
 from mdf_spark.helper import get_partitions
 
 class PythonBridge(object):
@@ -32,6 +34,13 @@ class PythonBridge(object):
 
 
 def init_bridge(spark):
+    # A Python proxy passed to the JVM requires Py4J's callback server.
+    # PySpark starts it lazily for APIs that need Java -> Python callbacks
+    # (for example streaming listeners), but a custom DataSource V2 proxy
+    # must opt in explicitly before the JVM stores the proxy.
+    gateway = spark.sparkContext._gateway
+    ensure_callback_server_started(gateway)
+
     bridge = PythonBridge(spark)
 
     # Py4J stores Python callback objects through weak references. Keep a
