@@ -33,4 +33,12 @@ class PythonBridge(object):
 
 def init_bridge(spark):
     bridge = PythonBridge(spark)
+
+    # Py4J stores Python callback objects through weak references. Keep a
+    # strong reference alive for at least as long as the SparkSession;
+    # otherwise the bridge may be garbage-collected after this function
+    # returns and a later lazy Spark action fails with "Connection refused"
+    # while planning MDF partitions.
+    spark._mdf_python_bridge = bridge
+
     spark._jvm.com.datenwissenschaften.MDFDataSource.setBridge(bridge)
