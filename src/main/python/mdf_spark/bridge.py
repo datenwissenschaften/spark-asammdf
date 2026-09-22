@@ -12,13 +12,19 @@ class PythonBridge(object):
 
     def getPartitions(self, options, where_clause):
         path = options.get("path")
-        parts = get_partitions(path, where_clause)
+        # Optional "maxRecordsPerPartition" read option: splits any channel
+        # occurrence with more records than this into multiple time-range
+        # partitions instead of one partition per whole occurrence — see
+        # mdf_spark.helper.get_partitions / _record_chunks.
+        max_records_raw = options.get("maxRecordsPerPartition")
+        max_records = int(max_records_raw) if max_records_raw else None
+        parts = get_partitions(path, where_clause, max_records)
 
         # Convert to Java List of Strings for Scala
         gateway = self.spark._sc._gateway
         java_list = gateway.jvm.java.util.ArrayList()
         for p in parts:
-            java_list.add(f"{p['channel']}|{p['group']}|{p['index']}|{p['count']}")
+            java_list.add(f"{p['channel']}|{p['group']}|{p['index']}|{p['offset']}|{p['count']}")
         return java_list
 
     class Java:

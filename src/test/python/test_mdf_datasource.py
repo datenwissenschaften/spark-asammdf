@@ -5,8 +5,8 @@ from pyspark.sql import SparkSession
 
 # Generic, synthetic channel names used by the test fixture generated in
 # src/test/resources/generate_fixture.py
-CHANNEL_A = "ObstacleDetected"
-CHANNEL_B = "LaneChangePossible"
+CHANNEL_A = "engine_speed"
+CHANNEL_B = "vehicle_speed"
 
 
 class TestMDFDataSource(unittest.TestCase):
@@ -93,16 +93,47 @@ class TestMDFDataSource(unittest.TestCase):
         print(f"Loaded channels: {channels}")
         self.assertIn(CHANNEL_A, channels, f"Expected channel {CHANNEL_A} to be loaded")
 
+    def test_max_records_per_partition_splits_a_large_channel(self):
+        # engine_speed has 3000 samples (see generate_fixture.py). Without maxRecordsPerPartition
+        # it is one partition; capping at 1000 records/partition should split it into 3 chunk
+        # partitions, read independently, whose rows still match an unchunked read exactly.
+        unchunked = (
+            self.spark.read
+            .format("com.datenwissenschaften.MDFDataSource")
+            .option("path", self.test_mdf_file)
+            .load()
+            .where(f"channel = '{CHANNEL_A}'")
+        )
+        self.assertEqual(unchunked.rdd.getNumPartitions(), 1)
+        unchunked_count = unchunked.count()
+
+        chunked = (
+            self.spark.read
+            .format("com.datenwissenschaften.MDFDataSource")
+            .option("path", self.test_mdf_file)
+            .option("maxRecordsPerPartition", "1000")
+            .load()
+            .where(f"channel = '{CHANNEL_A}'")
+        )
+        self.assertEqual(chunked.rdd.getNumPartitions(), 3)
+        self.assertEqual(chunked.count(), unchunked_count)
+
+        unchunked_rows = {tuple(r) for r in unchunked.orderBy("time").collect()}
+        chunked_rows = {tuple(r) for r in chunked.orderBy("time").collect()}
+        self.assertEqual(unchunked_rows, chunked_rows)
+
     def test_value_filter(self):
-        # Test with value filter on specific channel (using the new schema)
-        print(f"\nTesting Hybrid Scala-Python with value filter (value == 1) on {CHANNEL_B}...")
+        # vehicle_speed rises above 50 km/h during the fixture's cruise
+        # phase (see generate_fixture.py), so this filter is guaranteed to
+        # match a strict, non-empty subset of rows.
+        print(f"\nTesting Hybrid Scala-Python with value filter (valueNumeric > 50) on {CHANNEL_B}...")
         df_filtered = (
             self.spark.read
             .format("com.datenwissenschaften.MDFDataSource")
             .option("path", self.test_mdf_file)
             .load()
             .where(f"channel = '{CHANNEL_B}'")
-            .where("valueCont = 1")
+            .where("valueNumeric > 50")
         )
         df_filtered.show(20, False)
 

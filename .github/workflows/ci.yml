@@ -20,6 +20,9 @@ jobs:
           java-version: "21"
           cache: sbt
 
+      - name: sbt formatting check
+        run: sbt scalafmtCheckAll
+
       - name: sbt test & package
         run: sbt test package
 

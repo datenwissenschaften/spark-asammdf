@@ -38,12 +38,33 @@ target/
 .idea/
 .vscode/
 .bsp/
+.bloop/
+.metals/
+metals.sbt
 *.swp
 *.swo
 
-# Project specific
+# Notebooks
+.ipynb_checkpoints/
+
+# Test tooling
+.pytest_cache/
+
+# Raw measurement data — never commit real/proprietary automotive measurement
+# files. Only the explicitly-documented synthetic fixture below is exempt.
 *.mf4
-# ...except the small synthetic fixture used by the test suite (no real/proprietary data)
+*.mdf
+*.mf3
+*.dat
+*.dbc
+*.blf
+*.asc
+*.trc
+*.csv
+*.parquet
+# ...except the small synthetic fixture used by the test suite and notebook
+# (deterministic, seeded data with no real/proprietary vehicle content — see
+# src/test/resources/generate_fixture.py)
 !src/test/resources/data/sample.mf4
 
 # Java/Scala (legacy)
