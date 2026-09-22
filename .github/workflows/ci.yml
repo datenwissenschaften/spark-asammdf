@@ -39,6 +39,12 @@ jobs:
     name: Python tests
     needs: scala-tests
     runs-on: ubuntu-latest
+    env:
+      # Exercise the Python source directly in this job. Installing the package
+      # first builds Cython extensions in-place; Python would then prefer the
+      # generated .so files and coverage.py would incorrectly report helper.py
+      # and bridge.py as unexecuted.
+      PYTHONPATH: ${{ github.workspace }}/src/main/python
     steps:
       - uses: actions/checkout@v4
 
@@ -59,18 +65,22 @@ jobs:
           name: spark-asammdf-jar
           path: target/scala-2.13/
 
-      - name: Install Python dependencies
+      - name: Install Python runtime and test dependencies
         run: |
-          pip install -e .
+          pip install "pyspark>=4.0.0" asammdf pyarrow pandas numpy
           pip install -r src/test/python/requirements.txt
+          pip install pytest-cov
 
       - name: Generate synthetic test fixture
         run: python src/test/resources/generate_fixture.py
 
-      - name: Run Python test suite with coverage
+      - name: Run Python test suite with source coverage
         run: |
-          pip install pytest-cov
-          python -m pytest src/test/python -v --cov=src/main/python/mdf_spark --cov-report=term-missing --cov-report=xml
+          python -m pytest src/test/python -v \
+            --cov=mdf_spark \
+            --cov-report=term-missing \
+            --cov-report=xml
+
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v5
         with:
