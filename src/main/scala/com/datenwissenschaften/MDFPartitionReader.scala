@@ -16,10 +16,14 @@ import org.apache.parquet.hadoop.example.GroupReadSupport
  * Reads one [[MDFPartition]]'s sample values on the executor.
  *
  * When only the `channel` column was requested (after column pruning), rows are synthesized locally from the
- * partition's known cycle count without invoking Python at all. Otherwise this shells out to `python -m
- * mdf_spark.helper read` as a fresh subprocess per partition, because an executor in a real (non-local) cluster runs in
- * a separate JVM from the driver and cannot call back into the driver's [[MDFPythonBridge]] — see the memoized
- * `get_partitions` cache on the Python side for the driver-side equivalent, which this deliberately does not share. The
+ * partition's known cycle count without invoking Python at all. Otherwise this shells out to `python -c "from
+ * mdf_spark.helper import main; main()" read ...` as a fresh subprocess per partition, because an executor in a real
+ * (non-local) cluster runs in a separate JVM from the driver and cannot call back into the driver's [[MDFPythonBridge]]
+ * — see the memoized `get_partitions` cache on the Python side for the driver-side equivalent, which this deliberately
+ * does not share. `-c "... main()"` is used instead of the more obvious `python -m mdf_spark.helper` deliberately: when
+ * `mdf_spark` is installed from the Cython-compiled distribution (`setup.py`'s `ext_modules`, e.g. via `pip install -e
+ * .` or the wheel from `sbt buildPython`), `helper` is a compiled extension module, and `-m`/`runpy` cannot execute a
+ * compiled extension as `__main__` ("no code object available") — `import`-then-`call` has no such restriction. The
  * helper's output is a Parquet file path, read via [[readParquet]] and deleted once consumed.
  */
 class MDFPartitionReader(partition: MDFPartition, readSchema: StructType) extends PartitionReader[InternalRow] {
@@ -55,8 +59,8 @@ class MDFPartitionReader(partition: MDFPartition, readSchema: StructType) extend
           val pythonExec = sys.env.getOrElse("PYSPARK_PYTHON", "python3")
           val cmd = Seq(
             pythonExec,
-            "-m",
-            "mdf_spark.helper",
+            "-c",
+            "from mdf_spark.helper import main; main()",
             "read",
             "--path",
             partition.filePath,

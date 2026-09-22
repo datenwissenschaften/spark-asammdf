@@ -194,10 +194,15 @@ def read_data(file_path, channel_name, where_clause="", group_index=None, channe
         except Exception as e:
             print(f"Warning: Failed to apply filter '{where_clause}' in Python: {e}", file=sys.stderr)
 
-    # Ensure correct types for Parquet
-    # valueNumeric must be float/double for Spark, even if it's currently int
-    df['valueNumeric'] = df['valueNumeric'].astype(float)
-    df['valueText'] = df['valueText'].astype(str)
+    # Ensure correct types for Parquet (valueNumeric must be float/double for Spark, even if
+    # it's currently int) by building a fresh DataFrame from plain numpy arrays rather than
+    # assigning columns in place.
+    df = pd.DataFrame({
+        'time': df['time'].to_numpy(),
+        'channel': df['channel'].to_numpy(),
+        'valueNumeric': df['valueNumeric'].astype(float).to_numpy(),
+        'valueText': df['valueText'].astype(str).to_numpy(),
+    })
 
     # Use a temporary file to pass data to Scala
     fd, path = tempfile.mkstemp(suffix='.parquet')

@@ -351,7 +351,8 @@ Stated plainly, not buried:
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -e .
-pip install -r notebooks/requirements.txt   # only needed to regenerate the example notebook
+pip install -r src/test/python/requirements.txt  # pytest, to run the Python test suite
+pip install -r notebooks/requirements.txt         # only needed to regenerate the example notebook
 ```
 
 - `sbt scalafmtCheckAll` / `sbt scalafmtAll` — formatting gate (also enforced in CI).
@@ -368,6 +369,15 @@ pip install -r notebooks/requirements.txt   # only needed to regenerate the exam
   example notebook in place (which also regenerates the PNGs under
   `docs/assets/spark-asammdf/`). This is the single command referenced throughout this README for
   reproducing the notebook and its chart assets.
+
+> **Trap to know about:** both `pip install -e .` and `sbt buildPython`/`buildAll` build the
+> Cython extensions *in place*, dropping `helper.cpython-*.so`/`bridge.cpython-*.so` directly into
+> `src/main/python/mdf_spark/` next to the `.py` sources. Once those exist, Python's import
+> system prefers the compiled `.so` over the `.py` file — so `python -m pytest` (which puts
+> `src/main/python` on `sys.path`, not the installed package) will silently start testing that
+> compiled *snapshot* instead of your live source edits, with no warning that it's doing so. If
+> you've run either of those and then keep editing `helper.py`/`bridge.py`, delete the stale
+> `*.so`/`*.c` files (already gitignored) before running the test suite again.
 
 Notebook/example tooling (Jupyter, Plotly, Kaleido) is intentionally kept in
 `notebooks/requirements.txt`, separate from `setup.py`'s runtime dependencies — the connector

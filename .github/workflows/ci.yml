@@ -60,7 +60,9 @@ jobs:
           path: target/scala-2.13/
 
       - name: Install Python dependencies
-        run: pip install -e .
+        run: |
+          pip install -e .
+          pip install -r src/test/python/requirements.txt
 
       - name: Generate synthetic test fixture
         run: python src/test/resources/generate_fixture.py
